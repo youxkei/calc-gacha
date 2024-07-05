@@ -50,6 +50,12 @@ if __name__ == "__main__":
     character_pickup_expected = calc_pickup_expected(Rational(1, 2))
     light_cone_pickup_expected = calc_pickup_expected(Rational(3, 4))
 
+    print("キャラの回数の期待値:", character_pickup_expected.evalf())
+    print("キャラの値段の期待値:", (character_pickup_expected * (12000 / Rational(8080, 160))).evalf())
+
+    print("光円錐の回数の期待値:", light_cone_pickup_expected.evalf())
+    print("光円錐の値段の期待値:", (light_cone_pickup_expected * (12000 / Rational(8080, 160))).evalf())
+
     expected = (character_pickup_expected * 3 + light_cone_pickup_expected)
 
     print("2凸餅の回数の期待値:", expected.evalf())
@@ -64,3 +70,9 @@ if __name__ == "__main__":
 
     print("6凸餅の回数の期待値:", expected.evalf())
     print("6凸餅の値段の期待値:", (expected * (12000 / Rational(8080, 160))).evalf())
+
+    expected = (character_pickup_expected * 7 + light_cone_pickup_expected * 5)
+
+    print("両完凸の回数の期待値:", expected.evalf())
+    print("両完凸の値段の期待値:", (expected * (12000 / Rational(8080, 160))).evalf())
+
