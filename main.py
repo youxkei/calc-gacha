@@ -1,10 +1,14 @@
+import json
+import argparse
+import sys
+
 from sympy import *
 
 def irange(start, end):
     return range(start, end + 1)
 
 def gen_five_star_prob():
-    yield nan
+    yield Rational(0)
 
     for i in irange(1, 73):
         yield Rational(6, 1000)
@@ -26,8 +30,8 @@ def nth_five_star_prob(n):
 
     return prob
 
-def calc_pickup_expected(pickup_prob):
-    expected = Rational(0);
+def calc_pickup_probs(pickup_prob):
+    probs = [Rational(0)] * 181
     sum = Rational(0);
 
     for i in irange(1, 180):
@@ -39,41 +43,71 @@ def calc_pickup_expected(pickup_prob):
         for j in irange(max(1, i - 90), min(90, i - 1)):
             prob += nth_five_star_prob(j) * (1 - pickup_prob) * nth_five_star_prob(i - j)
 
-        expected += i * prob
+        probs[i] = prob
         sum += prob
 
     assert sum == 1
 
-    return expected
+    return probs
+
+character_pickup_probs = calc_pickup_probs(Rational(1, 2))
+light_cone_pickup_probs = calc_pickup_probs(Rational(3, 4))
+
+def convolve(a, b):
+    n = len(a) + len(b) - 1
+    c = [Rational(0)] * n
+
+    for i in range(len(a)):
+        for j in range(len(b)):
+            c[i + j] += a[i] * b[j]
+
+    return c
+
+def calc_expected_and_standard_deviation(probs):
+    expected = Rational(0)
+    expected_squared = Rational(0)
+
+    for i in range(len(probs)):
+        expected += i * probs[i]
+        expected_squared += i * i * probs[i]
+
+    variance = expected_squared - expected * expected
+    standard_deviation = sqrt(variance)
+
+    return expected, standard_deviation
 
 if __name__ == "__main__":
-    character_pickup_expected = calc_pickup_expected(Rational(1, 2))
-    light_cone_pickup_expected = calc_pickup_expected(Rational(3, 4))
+    sys.set_int_max_str_digits(0)
 
-    yen_per_pull = (12000 / Rational(8080, 160))
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("characters", type=int)
+    arg_parser.add_argument("light_cones", type=int)
+    args = arg_parser.parse_args()
 
-    print("キャラの回数の期待値:", character_pickup_expected.evalf())
-    print("キャラの値段の期待値:", (character_pickup_expected * yen_per_pull).evalf())
+    if not (0 <= args.characters and args.characters <= 7):
+        print("characters must be between 0 and 7")
+        exit(1)
 
-    print("光円錐の回数の期待値:", light_cone_pickup_expected.evalf())
-    print("光円錐の値段の期待値:", (light_cone_pickup_expected * yen_per_pull).evalf())
+    if not (0 <= args.light_cones and args.light_cones <= 5):
+        print("light_cones must be between 0 and 5")
+        exit(1)
 
-    expected = (character_pickup_expected * 3 + light_cone_pickup_expected)
+    probs = [Rational(1)]
+    for i in range(args.characters):
+        probs = convolve(probs, character_pickup_probs)
 
-    print("2凸餅の回数の期待値:", expected.evalf())
-    print("2凸餅の値段の期待値:", (expected * yen_per_pull).evalf())
+    for i in range(args.light_cones):
+        probs = convolve(probs, light_cone_pickup_probs)
 
-    expected = (character_pickup_expected * 5 + light_cone_pickup_expected)
+    assert sum(probs) == 1
 
-    print("4凸餅の回数の期待値:", expected.evalf())
-    print("4凸餅の値段の期待値:", (expected * yen_per_pull).evalf())
+    expected, standard_deviation = calc_expected_and_standard_deviation(probs)
 
-    expected = (character_pickup_expected * 7 + light_cone_pickup_expected)
-
-    print("6凸餅の回数の期待値:", expected.evalf())
-    print("6凸餅の値段の期待値:", (expected * yen_per_pull).evalf())
-
-    expected = (character_pickup_expected * 7 + light_cone_pickup_expected * 5)
-
-    print("両完凸の回数の期待値:", expected.evalf())
-    print("両完凸の値段の期待値:", (expected * yen_per_pull).evalf())
+    with open(f"data/{args.characters}_{args.light_cones}.json", "w") as f:
+        json.dump({
+            "expected": float(expected),
+            "standard_deviation": float(standard_deviation),
+            "probs": [str(prob) for prob in probs],
+            "prob_percents": [float(prob * 100) for prob in probs],
+            "t_scores": [float(10 * (i - expected) / standard_deviation + 50) for i in range(len(probs))]
+        }, f, indent=2)
