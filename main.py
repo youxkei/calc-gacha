@@ -80,34 +80,57 @@ if __name__ == "__main__":
     sys.set_int_max_str_digits(0)
 
     arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument("characters", type=int)
-    arg_parser.add_argument("light_cones", type=int)
+    arg_parser.add_argument("max_characters", type=int)
+    arg_parser.add_argument("max_light_cones", type=int)
     args = arg_parser.parse_args()
 
-    if not (0 <= args.characters and args.characters <= 7):
-        print("characters must be between 0 and 7")
+    if args.max_characters < 0:
+        print("max_characters must be a non-negative integer", file=sys.stderr)
         exit(1)
 
-    if not (0 <= args.light_cones and args.light_cones <= 5):
-        print("light_cones must be between 0 and 5")
+    if args.max_light_cones < 0:
+        print("max_light_cones must be a non-negative integer", file=sys.stderr)
         exit(1)
 
-    probs = [Rational(1)]
-    for i in range(args.characters):
-        probs = convolve(probs, character_pickup_probs)
+    max_characters = args.max_characters
+    max_light_cones = args.max_light_cones
 
-    for i in range(args.light_cones):
-        probs = convolve(probs, light_cone_pickup_probs)
+    probs = [[[Rational(1)] for _ in irange(0, max_characters)] for _ in irange(0, max_light_cones)]
 
-    assert sum(probs) == 1
+    for i in irange(1, max_characters):
+        print(f"character: {i}, light_cone: {0}")
+        probs[0][i] = convolve(probs[0][i - 1], character_pickup_probs)
 
-    expected, standard_deviation = calc_expected_and_standard_deviation(probs)
+        assert sum(probs[0][i]) == 1
 
-    with open(f"data/{args.characters}_{args.light_cones}.json", "w") as f:
-        json.dump({
-            "expected": float(expected),
-            "standard_deviation": float(standard_deviation),
-            "probs": [str(prob) for prob in probs],
-            "prob_percents": [float(prob * 100) for prob in probs],
-            "t_scores": [float(10 * (i - expected) / standard_deviation + 50) for i in range(len(probs))]
-        }, f, indent=2)
+    for i in irange(1, max_light_cones):
+        for j in irange(0, max_characters):
+            print(f"character: {j}, light_cone: {i}")
+
+            probs[i][j] = convolve(probs[i - 1][j], light_cone_pickup_probs)
+
+            assert sum(probs[i][j]) == 1
+
+    for i in irange(0, max_light_cones):
+        for j in irange(0, max_characters):
+            if i == 0 and j == 0:
+                continue
+
+            ps = probs[i][j]
+            expected, standard_deviation = calc_expected_and_standard_deviation(ps)
+
+            with open(f"data/{j}_{i}.json", "w") as f:
+                json.dump({
+                    "numeric": {
+                        "expected": float(expected),
+                        "standard_deviation": float(standard_deviation),
+                        "prob_percents": [float(p * 100) for p in ps],
+                        "t_scores": [float(10 * (k - expected) / standard_deviation + 50) for k in range(len(ps))],
+                    },
+                    "symbolic": {
+                        "expected": str(expected),
+                        "standard_deviation": str(standard_deviation),
+                        "probs": [str(p) for p in ps],
+                        "t_scores": [str(10 * (k - expected) / standard_deviation + 50) for k in range(len(ps))],
+                    },
+                }, f, indent=2)
