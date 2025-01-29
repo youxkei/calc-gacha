@@ -63,8 +63,8 @@ def calc_pickup_probs(five_star_probs, pickup_prob):
 
     return probs
 
-character_pickup_probs = calc_pickup_probs(character_five_star_probs, Rational(1, 2))
-light_cone_pickup_probs = calc_pickup_probs(light_cone_five_star_probs, Rational(3, 4))
+character_pickup_probs = calc_pickup_probs(character_five_star_probs, Rational(1, 2) + Rational(1, 2) * Rational(1, 8))
+light_cone_pickup_probs = calc_pickup_probs(light_cone_five_star_probs, Rational(3, 4) + Rational(1, 4) * Rational(1, 8))
 
 def convolve(a, b):
     n = len(a) + len(b) - 1
@@ -158,8 +158,8 @@ if __name__ == "__main__":
                 "tScores": [str(10 * (k - expected) / standard_deviation + 50) for k in range(len(ps))],
             }
 
-    with open(f"result/hsr.json", "w") as f:
+    with open(f"results/hsr.json", "w") as f:
         json.dump(result, f, indent=2)
 
-    with open(f"result/hsr_symbol.json", "w") as f:
+    with open(f"results/hsr_symbol.json", "w") as f:
         json.dump(result_symbolic, f, indent=2)
