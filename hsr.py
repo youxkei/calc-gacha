@@ -9,7 +9,7 @@ from sympy import *
 def irange(start, end):
     return range(start, end + 1)
 
-def gen_character_five_star_prob():
+def gen_five_star_character_probs():
     yield Rational(0)
 
     for i in irange(1, 73):
@@ -20,9 +20,7 @@ def gen_character_five_star_prob():
 
     yield Rational(1)
 
-character_five_star_probs = list(gen_character_five_star_prob())
-
-def gen_light_cone_five_star_prob():
+def gen_five_star_light_cone_probs():
     yield Rational(0)
 
     for i in irange(1, 65):
@@ -30,8 +28,6 @@ def gen_light_cone_five_star_prob():
 
     for i in irange(1, 80 - 65):
         yield Rational(8, 1000) + Rational(992, 1000) / 15 * i
-
-light_cone_five_star_probs = list(gen_light_cone_five_star_prob())
 
 def calc_nth_five_star_probs(probs):
     nth_probs = []
@@ -43,10 +39,10 @@ def calc_nth_five_star_probs(probs):
 
     return nth_probs
 
-nth_character_five_star_probs = calc_nth_five_star_probs(character_five_star_probs)
-nth_light_cone_five_star_probs = calc_nth_five_star_probs(light_cone_five_star_probs)
+nth_five_star_character_probs = calc_nth_five_star_probs(list(gen_five_star_character_probs()))
+nth_five_star_light_cone_probs = calc_nth_five_star_probs(list(gen_five_star_light_cone_probs()))
 
-def calc_pickup_probs(nth_five_star_probs, pickup_prob):
+def calc_limited_five_star_probs(nth_five_star_probs, limited_prob):
     length = len(nth_five_star_probs) - 1
     probs = [Rational(0)] * (length * 2 + 1)
     sum = Rational(0);
@@ -55,10 +51,10 @@ def calc_pickup_probs(nth_five_star_probs, pickup_prob):
         prob = Rational(0);
 
         if i <= length:
-            prob += nth_five_star_probs[i] * pickup_prob
+            prob += nth_five_star_probs[i] * limited_prob
 
         for j in irange(max(1, i - length), min(length, i - 1)):
-            prob += nth_five_star_probs[j] * (1 - pickup_prob) * nth_five_star_probs[i - j]
+            prob += nth_five_star_probs[j] * (1 - limited_prob) * nth_five_star_probs[i - j]
 
         probs[i] = prob
         sum += prob
@@ -67,8 +63,8 @@ def calc_pickup_probs(nth_five_star_probs, pickup_prob):
 
     return probs
 
-character_pickup_probs = calc_pickup_probs(nth_character_five_star_probs, Rational(1, 2) + Rational(1, 2) * Rational(1, 8))
-light_cone_pickup_probs = calc_pickup_probs(nth_light_cone_five_star_probs, Rational(3, 4) + Rational(1, 4) * Rational(1, 8))
+limited_five_star_character_probs = calc_limited_five_star_probs(nth_five_star_character_probs, Rational(1, 2) + Rational(1, 2) * Rational(1, 8))
+limited_five_star_light_cone_probs = calc_limited_five_star_probs(nth_five_star_light_cone_probs, Rational(3, 4) + Rational(1, 4) * Rational(1, 8))
 
 def convolve(a, b):
     n = len(a) + len(b) - 1
@@ -115,7 +111,6 @@ if __name__ == "__main__":
 
     probs = [[[Rational(1)] for _ in irange(0, max_characters)] for _ in irange(0, max_light_cones)]
 
-    
     print(f"\nlight_cone: 0", file=sys.stderr)
     light_cone_start_time = time.time()
 
@@ -123,7 +118,7 @@ if __name__ == "__main__":
 
         start_time = time.time()
 
-        probs[0][i] = convolve(probs[0][i - 1], character_pickup_probs)
+        probs[0][i] = convolve(probs[0][i - 1], limited_five_star_character_probs)
         assert sum(probs[0][i]) == 1
 
         print(f"light_cone: 0, character: {i}, elapsed_time: {time.time() - start_time:.6f} seconds", file=sys.stderr)
@@ -136,11 +131,10 @@ if __name__ == "__main__":
         light_cone_start_time = time.time()
 
         with concurrent.futures.ProcessPoolExecutor(max_workers=max_characters) as executor:
-
             def calc(j):
                 character_start_time = time.time()
 
-                convolution = convolve(probs[i - 1][j], light_cone_pickup_probs)
+                convolution = convolve(probs[i - 1][j], limited_five_star_light_cone_probs)
                 assert sum(convolution) == 1
 
                 return (j, convolution, time.time() - character_start_time)
@@ -176,12 +170,7 @@ if __name__ == "__main__":
                 "cumulativeProbPercents": [float(p * 100) for p in cumulative_probs],
             }
 
-            result_symbolic[f"{j}_{i}"] = {
-                "expected": str(expected),
-                "standardDeviation": str(standard_deviation),
-                "probs": [str(p) for p in ps],
-                "cumulativeProbs": [str(p) for p in cumulative_probs],
-            }
+            result_symbolic[f"{j}_{i}"] = [str(p) for p in ps]
 
     if args.write:
         with open(f"results/hsr.json", "w") as f:
