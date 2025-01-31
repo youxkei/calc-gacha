@@ -2,6 +2,7 @@ import json
 import argparse
 import sys
 import time
+import concurrent.futures
 
 from sympy import *
 
@@ -32,18 +33,21 @@ def gen_light_cone_five_star_prob():
 
 light_cone_five_star_probs = list(gen_light_cone_five_star_prob())
 
-def nth_five_star_prob(probs, n):
-    prob = Rational(1)
+def calc_nth_five_star_probs(probs):
+    nth_probs = []
+    prob_not_occur = Rational(1)
 
-    for i in irange(1, n - 1):
-        prob *= 1 - probs[i]
+    for prob in probs:
+        nth_probs += [prob_not_occur * prob]
+        prob_not_occur *= 1 - prob
 
-    prob *= probs[n]
+    return nth_probs
 
-    return prob
+nth_character_five_star_probs = calc_nth_five_star_probs(character_five_star_probs)
+nth_light_cone_five_star_probs = calc_nth_five_star_probs(light_cone_five_star_probs)
 
-def calc_pickup_probs(five_star_probs, pickup_prob):
-    length = len(five_star_probs) - 1
+def calc_pickup_probs(nth_five_star_probs, pickup_prob):
+    length = len(nth_five_star_probs) - 1
     probs = [Rational(0)] * (length * 2 + 1)
     sum = Rational(0);
 
@@ -51,10 +55,10 @@ def calc_pickup_probs(five_star_probs, pickup_prob):
         prob = Rational(0);
 
         if i <= length:
-            prob += nth_five_star_prob(five_star_probs, i) * pickup_prob
+            prob += nth_five_star_probs[i] * pickup_prob
 
         for j in irange(max(1, i - length), min(length, i - 1)):
-            prob += nth_five_star_prob(five_star_probs, j) * (1 - pickup_prob) * nth_five_star_prob(five_star_probs, i - j)
+            prob += nth_five_star_probs[j] * (1 - pickup_prob) * nth_five_star_probs[i - j]
 
         probs[i] = prob
         sum += prob
@@ -63,8 +67,8 @@ def calc_pickup_probs(five_star_probs, pickup_prob):
 
     return probs
 
-character_pickup_probs = calc_pickup_probs(character_five_star_probs, Rational(1, 2) + Rational(1, 2) * Rational(1, 8))
-light_cone_pickup_probs = calc_pickup_probs(light_cone_five_star_probs, Rational(3, 4) + Rational(1, 4) * Rational(1, 8))
+character_pickup_probs = calc_pickup_probs(nth_character_five_star_probs, Rational(1, 2) + Rational(1, 2) * Rational(1, 8))
+light_cone_pickup_probs = calc_pickup_probs(nth_light_cone_five_star_probs, Rational(3, 4) + Rational(1, 4) * Rational(1, 8))
 
 def convolve(a, b):
     n = len(a) + len(b) - 1
@@ -95,6 +99,7 @@ if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("max_characters", type=int)
     arg_parser.add_argument("max_light_cones", type=int)
+    arg_parser.add_argument("-w", "--write", action="store_true")
     args = arg_parser.parse_args()
 
     if args.max_characters < 0:
@@ -110,28 +115,44 @@ if __name__ == "__main__":
 
     probs = [[[Rational(1)] for _ in irange(0, max_characters)] for _ in irange(0, max_light_cones)]
 
+    
+    print(f"\nlight_cone: 0", file=sys.stderr)
+    light_cone_start_time = time.time()
+
     for i in irange(1, max_characters):
-        print(f"character: {i}, light_cone: {0}")
 
         start_time = time.time()
+
         probs[0][i] = convolve(probs[0][i - 1], character_pickup_probs)
-        end_time = time.time()
-
-        print(f"character: {i}, light_cone: {0}, elapsed_time: {end_time - start_time:.6f} seconds")
-
         assert sum(probs[0][i]) == 1
 
+        print(f"light_cone: 0, character: {i}, elapsed_time: {time.time() - start_time:.6f} seconds", file=sys.stderr)
+
+    print(f"light_cone: 0, elapsed_time: {time.time() - light_cone_start_time:.6f} seconds", file=sys.stderr)
+
+
     for i in irange(1, max_light_cones):
-        for j in irange(0, max_characters):
-            print(f"character: {j}, light_cone: {i}")
+        print(f"\nlight_cone: {i}", file=sys.stderr)
+        light_cone_start_time = time.time()
 
-            start_time = time.time()
-            probs[i][j] = convolve(probs[i - 1][j], light_cone_pickup_probs)
-            end_time = time.time()
+        with concurrent.futures.ProcessPoolExecutor(max_workers=max_characters) as executor:
 
-            print(f"character: {j}, light_cone: {i}, elapsed_time: {end_time - start_time:.6f} seconds")
+            def calc(j):
+                character_start_time = time.time()
 
-            assert sum(probs[i][j]) == 1
+                convolution = convolve(probs[i - 1][j], light_cone_pickup_probs)
+                assert sum(convolution) == 1
+
+                return (j, convolution, time.time() - character_start_time)
+
+            futures = [executor.submit(calc, j) for j in irange(0, max_characters)]
+
+            for future in concurrent.futures.as_completed(futures):
+                j, convolution, elapsed_time = future.result()
+                probs[i][j] = convolution
+                print(f"light_cone: {i}, character: {j}, elapsed_time: {elapsed_time:.6f} seconds", file=sys.stderr)
+
+        print(f"light_cone: {i}, elapsed_time: {time.time() - light_cone_start_time:.6f} seconds", file=sys.stderr)
 
     result = {}
     result_symbolic = {}
@@ -144,22 +165,30 @@ if __name__ == "__main__":
             ps = probs[i][j]
             expected, standard_deviation = calc_expected_and_standard_deviation(ps)
 
+            cumulative_probs = []
+            for prob in ps:
+                cumulative_probs.append(prob + cumulative_probs[-1] if cumulative_probs else prob)
+
             result[f"{j}_{i}"] = {
                 "expected": float(expected),
                 "standardDeviation": float(standard_deviation),
                 "probPercents": [float(p * 100) for p in ps],
-                "tScores": [float(10 * (k - expected) / standard_deviation + 50) for k in range(len(ps))],
+                "cumulativeProbPercents": [float(p * 100) for p in cumulative_probs],
             }
 
             result_symbolic[f"{j}_{i}"] = {
                 "expected": str(expected),
                 "standardDeviation": str(standard_deviation),
                 "probs": [str(p) for p in ps],
-                "tScores": [str(10 * (k - expected) / standard_deviation + 50) for k in range(len(ps))],
+                "cumulativeProbs": [str(p) for p in cumulative_probs],
             }
 
-    with open(f"results/hsr.json", "w") as f:
-        json.dump(result, f, indent=2)
+    if args.write:
+        with open(f"results/hsr.json", "w") as f:
+            json.dump(result, f, indent=2)
 
-    with open(f"results/hsr_symbol.json", "w") as f:
-        json.dump(result_symbolic, f, indent=2)
+        with open(f"results/hsr_symbol.json", "w") as f:
+            json.dump(result_symbolic, f, indent=2)
+    else:
+        json.dump(result, sys.stdout, indent=2)
+        json.dump(result_symbolic, sys.stdout, indent=2)
