@@ -111,73 +111,70 @@ if __name__ == "__main__":
 
     probs = [[[Rational(1)] for _ in irange(0, max_characters)] for _ in irange(0, max_light_cones)]
 
-    print(f"\nlight_cone: 0", file=sys.stderr)
+    print(f"\nlight_cones: 0", file=sys.stderr)
     light_cone_start_time = time.time()
 
-    for i in irange(1, max_characters):
-
+    for characters_num in irange(1, max_characters):
         start_time = time.time()
 
-        probs[0][i] = convolve(probs[0][i - 1], limited_five_star_character_probs)
-        assert sum(probs[0][i]) == 1
+        probs[0][characters_num] = convolve(probs[0][characters_num - 1], limited_five_star_character_probs)
+        assert sum(probs[0][characters_num]) == 1
 
-        print(f"light_cone: 0, character: {i}, elapsed_time: {time.time() - start_time:.6f} seconds", file=sys.stderr)
+        print(f"light_cones: 0, characters: {characters_num}, elapsed_time: {time.time() - start_time:.6f} seconds", file=sys.stderr)
 
-    print(f"light_cone: 0, elapsed_time: {time.time() - light_cone_start_time:.6f} seconds", file=sys.stderr)
+    print(f"light_cones: 0, elapsed_time: {time.time() - light_cone_start_time:.6f} seconds", file=sys.stderr)
 
 
-    for i in irange(1, max_light_cones):
-        print(f"\nlight_cone: {i}", file=sys.stderr)
+    for light_cones_num in irange(1, max_light_cones):
+        print(f"\nlight_cones: {light_cones_num}", file=sys.stderr)
         light_cone_start_time = time.time()
 
         with concurrent.futures.ProcessPoolExecutor(max_workers=max_characters) as executor:
-            def calc(j):
+            def calc(characters_num):
                 character_start_time = time.time()
 
-                convolution = convolve(probs[i - 1][j], limited_five_star_light_cone_probs)
+                convolution = convolve(probs[light_cones_num - 1][characters_num], limited_five_star_light_cone_probs)
                 assert sum(convolution) == 1
 
-                return (j, convolution, time.time() - character_start_time)
+                return (characters_num, convolution, time.time() - character_start_time)
 
-            futures = [executor.submit(calc, j) for j in irange(0, max_characters)]
+            futures = [executor.submit(calc, characters_num) for characters_num in irange(0, max_characters)]
 
             for future in concurrent.futures.as_completed(futures):
-                j, convolution, elapsed_time = future.result()
-                probs[i][j] = convolution
-                print(f"light_cone: {i}, character: {j}, elapsed_time: {elapsed_time:.6f} seconds", file=sys.stderr)
+                characters_num, convolution, elapsed_time = future.result()
+                probs[light_cones_num][characters_num] = convolution
 
-        print(f"light_cone: {i}, elapsed_time: {time.time() - light_cone_start_time:.6f} seconds", file=sys.stderr)
+                print(f"light_cones: {light_cones_num}, characters: {characters_num}, elapsed_time: {elapsed_time:.6f} seconds", file=sys.stderr)
 
-    result = {}
-    result_symbolic = {}
+        print(f"light_cones: {light_cones_num}, elapsed_time: {time.time() - light_cone_start_time:.6f} seconds", file=sys.stderr)
 
-    for i in irange(0, max_light_cones):
-        for j in irange(0, max_characters):
-            if i == 0 and j == 0:
-                continue
+    results = [[None for _ in irange(0, max_characters)] for _ in irange(0, max_light_cones)]
+    results_symbolic = [[None for _ in irange(0, max_characters)] for _ in irange(0, max_light_cones)]
 
-            ps = probs[i][j]
+    for light_cones_num in irange(0, max_light_cones):
+        for characters_num in irange(0, max_characters):
+            ps = probs[light_cones_num][characters_num]
             expected, standard_deviation = calc_expected_and_standard_deviation(ps)
 
             cumulative_probs = []
             for prob in ps:
                 cumulative_probs.append(prob + cumulative_probs[-1] if cumulative_probs else prob)
 
-            result[f"{j}_{i}"] = {
+            results[light_cones_num][characters_num] = {
                 "expected": float(expected),
                 "standardDeviation": float(standard_deviation),
                 "probPercents": [float(p * 100) for p in ps],
                 "cumulativeProbPercents": [float(p * 100) for p in cumulative_probs],
             }
 
-            result_symbolic[f"{j}_{i}"] = [str(p) for p in ps]
+            results_symbolic[light_cones_num][characters_num] = [str(p) for p in ps]
 
     if args.write:
         with open(f"results/hsr.json", "w") as f:
-            json.dump(result, f, indent=2)
+            json.dump(results, f, indent=2)
 
         with open(f"results/hsr_symbol.json", "w") as f:
-            json.dump(result_symbolic, f, indent=2)
+            json.dump(results_symbolic, f, indent=2)
     else:
-        json.dump(result, sys.stdout, indent=2)
-        json.dump(result_symbolic, sys.stdout, indent=2)
+        json.dump(results, sys.stdout, indent=2)
+        json.dump(results_symbolic, sys.stdout, indent=2)
