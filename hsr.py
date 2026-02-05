@@ -67,14 +67,20 @@ limited_five_star_character_probs = calc_limited_five_star_probs(nth_five_star_c
 limited_five_star_light_cone_probs = calc_limited_five_star_probs(nth_five_star_light_cone_probs, Rational(3, 4) + Rational(1, 4) * Rational(1, 8))
 
 def convolve(a, b):
-    n = len(a) + len(b) - 1
-    c = [Rational(0)] * n
+    denom_a = 1
+    for x in a:
+        denom_a = lcm(denom_a, x.q)
 
-    for i in range(len(a)):
-        for j in range(len(b)):
-            c[i + j] += a[i] * b[j]
+    denom_b = 1
+    for x in b:
+        denom_b = lcm(denom_b, x.q)
 
-    return c
+    int_a = [int(x * denom_a) for x in a]
+    int_b = [int(x * denom_b) for x in b]
+    int_result = convolution(int_a, int_b)
+    denom = int(denom_a * denom_b)
+
+    return [Rational(x, denom) for x in int_result]
 
 def calc_expected_and_standard_deviation(probs):
     expected = Rational(0)
@@ -133,16 +139,16 @@ if __name__ == "__main__":
             def calc(characters_num):
                 character_start_time = time.time()
 
-                convolution = convolve(probs[light_cones_num - 1][characters_num], limited_five_star_light_cone_probs)
-                assert sum(convolution) == 1
+                conv_result = convolve(probs[light_cones_num - 1][characters_num], limited_five_star_light_cone_probs)
+                assert sum(conv_result) == 1
 
-                return (characters_num, convolution, time.time() - character_start_time)
+                return (characters_num, conv_result, time.time() - character_start_time)
 
             futures = [executor.submit(calc, characters_num) for characters_num in irange(0, max_characters)]
 
             for future in concurrent.futures.as_completed(futures):
-                characters_num, convolution, elapsed_time = future.result()
-                probs[light_cones_num][characters_num] = convolution
+                characters_num, conv_result, elapsed_time = future.result()
+                probs[light_cones_num][characters_num] = conv_result
 
                 print(f"light_cones: {light_cones_num}, characters: {characters_num}, elapsed_time: {elapsed_time:.6f} seconds", file=sys.stderr)
 
