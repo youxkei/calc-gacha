@@ -9,6 +9,58 @@ from sympy import *
 def irange(start, end):
     return range(start, end + 1)
 
+class ProbDist:
+    def __init__(self, numerators: list[int], denominator: int):
+        self.numerators = numerators
+        self.denominator = denominator
+
+    @staticmethod
+    def from_rationals(rationals: list[Rational]) -> "ProbDist":
+        denominator = 1
+        for x in rationals:
+            denominator = lcm(denominator, x.q)
+        denominator = int(denominator)
+        numerators = [int(x * denominator) for x in rationals]
+        return ProbDist(numerators, denominator)
+
+    def convolve(self, other: "ProbDist") -> "ProbDist":
+        int_result = convolution(self.numerators, other.numerators)
+        return ProbDist([int(x) for x in int_result], self.denominator * other.denominator)
+
+    def sum(self) -> Rational:
+        return Rational(sum(self.numerators), self.denominator)
+
+    def expected_and_standard_deviation(self):
+        expected = Rational(0)
+        expected_squared = Rational(0)
+        for i in range(len(self.numerators)):
+            p = Rational(self.numerators[i], self.denominator)
+            expected += i * p
+            expected_squared += i * i * p
+        variance = expected_squared - expected * expected
+        standard_deviation = sqrt(variance)
+        return expected, standard_deviation
+
+    def prob_percents(self) -> list[float]:
+        return [float(Rational(n * 100, self.denominator)) for n in self.numerators]
+
+    def cumulative_prob_percents(self) -> list[float]:
+        result = []
+        cumulative = 0
+        for n in self.numerators:
+            cumulative += n
+            result.append(float(Rational(cumulative * 100, self.denominator)))
+        return result
+
+    def to_symbol_strs(self) -> list[str]:
+        return [str(Rational(n, self.denominator)) for n in self.numerators]
+
+    def __len__(self):
+        return len(self.numerators)
+
+    def __getitem__(self, index):
+        return Rational(self.numerators[index], self.denominator)
+
 def gen_five_star_character_probs():
     yield Rational(0)
 
@@ -63,37 +115,8 @@ def calc_limited_five_star_probs(nth_five_star_probs, limited_prob):
 
     return probs
 
-limited_five_star_character_probs = calc_limited_five_star_probs(nth_five_star_character_probs, Rational(1, 2) + Rational(1, 2) * Rational(1, 8))
-limited_five_star_light_cone_probs = calc_limited_five_star_probs(nth_five_star_light_cone_probs, Rational(3, 4) + Rational(1, 4) * Rational(1, 8))
-
-def convolve(a, b):
-    denom_a = 1
-    for x in a:
-        denom_a = lcm(denom_a, x.q)
-
-    denom_b = 1
-    for x in b:
-        denom_b = lcm(denom_b, x.q)
-
-    int_a = [int(x * denom_a) for x in a]
-    int_b = [int(x * denom_b) for x in b]
-    int_result = convolution(int_a, int_b)
-    denom = int(denom_a * denom_b)
-
-    return [Rational(x, denom) for x in int_result]
-
-def calc_expected_and_standard_deviation(probs):
-    expected = Rational(0)
-    expected_squared = Rational(0)
-
-    for i in range(len(probs)):
-        expected += i * probs[i]
-        expected_squared += i * i * probs[i]
-
-    variance = expected_squared - expected * expected
-    standard_deviation = sqrt(variance)
-
-    return expected, standard_deviation
+limited_five_star_character_probs = ProbDist.from_rationals(calc_limited_five_star_probs(nth_five_star_character_probs, Rational(1, 2) + Rational(1, 2) * Rational(1, 8)))
+limited_five_star_light_cone_probs = ProbDist.from_rationals(calc_limited_five_star_probs(nth_five_star_light_cone_probs, Rational(3, 4) + Rational(1, 4) * Rational(1, 8)))
 
 if __name__ == "__main__":
     sys.set_int_max_str_digits(0)
@@ -115,7 +138,7 @@ if __name__ == "__main__":
     max_characters = args.max_characters
     max_light_cones = args.max_light_cones
 
-    probs = [[[Rational(1)] for _ in irange(0, max_characters)] for _ in irange(0, max_light_cones)]
+    probs = [[ProbDist([1], 1) for _ in irange(0, max_characters)] for _ in irange(0, max_light_cones)]
 
     print(f"\nlight_cones: 0", file=sys.stderr)
     light_cone_start_time = time.time()
@@ -123,8 +146,8 @@ if __name__ == "__main__":
     for characters_num in irange(1, max_characters):
         start_time = time.time()
 
-        probs[0][characters_num] = convolve(probs[0][characters_num - 1], limited_five_star_character_probs)
-        assert sum(probs[0][characters_num]) == 1
+        probs[0][characters_num] = probs[0][characters_num - 1].convolve(limited_five_star_character_probs)
+        assert probs[0][characters_num].sum() == 1
 
         print(f"light_cones: 0, characters: {characters_num}, elapsed_time: {time.time() - start_time:.6f} seconds", file=sys.stderr)
 
@@ -139,8 +162,8 @@ if __name__ == "__main__":
             def calc(characters_num):
                 character_start_time = time.time()
 
-                conv_result = convolve(probs[light_cones_num - 1][characters_num], limited_five_star_light_cone_probs)
-                assert sum(conv_result) == 1
+                conv_result = probs[light_cones_num - 1][characters_num].convolve(limited_five_star_light_cone_probs)
+                assert conv_result.sum() == 1
 
                 return (characters_num, conv_result, time.time() - character_start_time)
 
@@ -160,20 +183,16 @@ if __name__ == "__main__":
     for light_cones_num in irange(0, max_light_cones):
         for characters_num in irange(0, max_characters):
             ps = probs[light_cones_num][characters_num]
-            expected, standard_deviation = calc_expected_and_standard_deviation(ps)
-
-            cumulative_probs = []
-            for prob in ps:
-                cumulative_probs.append(prob + cumulative_probs[-1] if cumulative_probs else prob)
+            expected, standard_deviation = ps.expected_and_standard_deviation()
 
             results[light_cones_num][characters_num] = {
                 "expected": float(expected),
                 "standardDeviation": float(standard_deviation),
-                "probPercents": [float(p * 100) for p in ps],
-                "cumulativeProbPercents": [float(p * 100) for p in cumulative_probs],
+                "probPercents": ps.prob_percents(),
+                "cumulativeProbPercents": ps.cumulative_prob_percents(),
             }
 
-            results_symbolic[light_cones_num][characters_num] = [str(p) for p in ps]
+            results_symbolic[light_cones_num][characters_num] = ps.to_symbol_strs()
 
     if args.write:
         with open(f"results/hsr.json", "w") as f:
